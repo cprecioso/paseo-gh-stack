@@ -1,5 +1,5 @@
 import type { PluginTheme } from "@getpaseo/plugin";
-import { type PluginWorkspacePanelProps, useRpc, useWorkspace } from "@getpaseo/plugin/client";
+import { openExternalUrl, type PluginWorkspacePanelProps, useRpc, useWorkspace } from "@getpaseo/plugin/client";
 import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
@@ -11,7 +11,6 @@ import {
   trackRemoteStackRpc,
   viewStackRpc,
 } from "../shared/stack";
-import { openExternal } from "./web";
 
 export function stackQueryKey(directory: string) {
   return ["gh-stack", directory] as const;
@@ -347,7 +346,7 @@ function BranchRow({
           accessibilityRole="link"
           accessibilityLabel={`Open pull request ${pr.number}`}
           disabled={!pr.url}
-          onPress={() => (pr.url ? void openExternal(pr.url) : undefined)}
+          onPress={() => (pr.url ? void openExternalUrl(pr.url) : undefined)}
           style={styles.pr}
         >
           <Text style={styles.prText}>#{pr.number}</Text>
