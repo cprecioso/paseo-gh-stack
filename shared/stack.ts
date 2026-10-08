@@ -29,6 +29,10 @@ export const stackStateSchema = z.discriminatedUnion("status", [
   }),
   z.object({
     status: z.literal("stack"),
+    // "local": tracked by `gh stack` in this repository. "remote": discovered on GitHub
+    // from the current branch's pull request, without local tracking.
+    source: z.enum(["local", "remote"]),
+    stackNumber: z.number().optional(),
     trunk: z.string(),
     currentBranch: z.string(),
     // Ordered bottom (closest to trunk) to top, as `gh stack view --json` reports them.
@@ -47,5 +51,11 @@ export const viewStackRpc = defineRpc({
 export const checkoutStackBranchRpc = defineRpc({
   name: "stack.checkout",
   input: z.object({ directory: z.string(), branch: z.string() }),
+  output: stackStateSchema,
+});
+
+export const trackRemoteStackRpc = defineRpc({
+  name: "stack.track",
+  input: z.object({ directory: z.string() }),
   output: stackStateSchema,
 });

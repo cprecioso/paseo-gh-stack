@@ -8,6 +8,7 @@ import {
   checkoutStackBranchRpc,
   type StackBranch,
   type StackState,
+  trackRemoteStackRpc,
   viewStackRpc,
 } from "../shared/stack";
 import { openExternal } from "./web";
@@ -56,14 +57,14 @@ function useStyles(theme: PluginTheme, compact: boolean) {
       flags: { flexDirection: "row" as const, gap: 8, flexWrap: "wrap" as const },
       pr: { paddingVertical: 10, paddingHorizontal: 12 },
       prText: { color: theme.colors.accent, fontSize: 13 },
-      retry: {
+      button: {
         alignSelf: "flex-start" as const,
         paddingVertical: 6,
         paddingHorizontal: 12,
         borderRadius: 6,
         backgroundColor: theme.colors.accent,
       },
-      retryText: { color: theme.colors.accentForeground, fontSize: 13 },
+      buttonText: { color: theme.colors.accentForeground, fontSize: 13 },
     }),
     [theme, compact],
   );
@@ -80,6 +81,7 @@ export function StackPanel({ theme, layout, workspaceId }: PluginWorkspacePanelP
   const styles = useStyles(theme, layout.compact);
   const viewStack = useRpc(viewStackRpc);
   const checkoutBranch = useRpc(checkoutStackBranchRpc);
+  const trackStack = useRpc(trackRemoteStackRpc);
   const queryClient = useQueryClient();
   const toast = useToast();
   const directory = workspace?.directory ?? "";
@@ -98,6 +100,15 @@ export function StackPanel({ theme, layout, workspaceId }: PluginWorkspacePanelP
     onSuccess: (state, branch) => {
       queryClient.setQueryData(stackQueryKey(directory), state);
       toast.show(`Switched to ${branch}`, { variant: "success" });
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : String(error)),
+  });
+
+  const track = useMutation({
+    mutationFn: () => trackStack({ directory }),
+    onSuccess: (state) => {
+      queryClient.setQueryData(stackQueryKey(directory), state);
+      toast.show("Stack checked out", { variant: "success" });
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : String(error)),
   });
@@ -135,9 +146,9 @@ export function StackPanel({ theme, layout, workspaceId }: PluginWorkspacePanelP
           <Pressable
             accessibilityRole="button"
             onPress={() => void stack.refetch()}
-            style={styles.retry}
+            style={styles.button}
           >
-            <Text style={styles.retryText}>Try again</Text>
+            <Text style={styles.buttonText}>Try again</Text>
           </Pressable>
         </>
       ) : (
@@ -148,6 +159,8 @@ export function StackPanel({ theme, layout, workspaceId }: PluginWorkspacePanelP
           agentRunning={workspace.status === "running"}
           switchingTo={checkout.isPending ? checkout.variables : null}
           onSelect={(branch) => checkout.mutate(branch)}
+          tracking={track.isPending}
+          onTrack={() => track.mutate()}
         />
       )}
     </ScrollView>
@@ -161,9 +174,20 @@ interface StackBodyProps {
   agentRunning: boolean;
   switchingTo: string | null;
   onSelect(branch: string): void;
+  tracking: boolean;
+  onTrack(): void;
 }
 
-function StackBody({ state, styles, theme, agentRunning, switchingTo, onSelect }: StackBodyProps) {
+function StackBody({
+  state,
+  styles,
+  theme,
+  agentRunning,
+  switchingTo,
+  onSelect,
+  tracking,
+  onTrack,
+}: StackBodyProps) {
   if (state.status === "unavailable") {
     return state.reason === "gh-missing" ? (
       <Text style={styles.muted}>
@@ -194,8 +218,30 @@ function StackBody({ state, styles, theme, agentRunning, switchingTo, onSelect }
 
   // Top of the stack first, trunk last, matching `gh stack view`.
   const branches = [...state.branches].reverse();
+  const remote = state.source === "remote";
+  // Branches of a stack that only exists on GitHub may not exist locally, so switching
+  // waits until `gh stack checkout` has set the stack up.
+  const rowsDisabled = remote || switchingTo !== null;
   return (
     <>
+      {remote ? (
+        <>
+          <Text style={styles.muted}>
+            This branch is part of stack #{state.stackNumber} on GitHub, but the stack is not
+            checked out locally.
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Check out stack ${state.stackNumber}`}
+            accessibilityState={{ busy: tracking, disabled: tracking }}
+            disabled={tracking}
+            onPress={onTrack}
+            style={styles.button}
+          >
+            <Text style={styles.buttonText}>{tracking ? "Checking out…" : "Check out stack"}</Text>
+          </Pressable>
+        </>
+      ) : null}
       {agentRunning ? (
         <Text style={styles.warning}>
           An agent is running here. Switching branches changes the files under it.
@@ -210,7 +256,7 @@ function StackBody({ state, styles, theme, agentRunning, switchingTo, onSelect }
             first={index === 0}
             current={branch.name === state.currentBranch}
             switching={switchingTo === branch.name}
-            disabled={switchingTo !== null}
+            disabled={rowsDisabled}
             styles={styles}
             theme={theme}
             onSelect={onSelect}
@@ -222,7 +268,7 @@ function StackBody({ state, styles, theme, agentRunning, switchingTo, onSelect }
           first={branches.length === 0}
           current={state.trunk === state.currentBranch}
           switching={switchingTo === state.trunk}
-          disabled={switchingTo !== null}
+          disabled={rowsDisabled}
           styles={styles}
           theme={theme}
           onSelect={onSelect}

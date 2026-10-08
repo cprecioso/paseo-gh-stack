@@ -5,8 +5,10 @@ import {
   type checkoutStackBranchRpc,
   type StackState,
   stackBranchSchema,
+  type trackRemoteStackRpc,
   type viewStackRpc,
 } from "../shared/stack";
+import { currentPullRequestSchema, remoteStackListSchema, remoteStackState } from "./remote-stack";
 
 interface CommandResult {
   code: number;
@@ -54,6 +56,45 @@ async function currentBranch(directory: string): Promise<string | null> {
   return result.code === 0 && result.stdout.trim() ? result.stdout.trim() : null;
 }
 
+type RemoteLookup = Extract<StackState, { status: "stack" }> | null;
+
+// The panel polls, and the remote lookup costs two GitHub API calls, so reuse results briefly.
+const REMOTE_TTL_MS = 60_000;
+const remoteCache = new Map<string, { expiresAt: number; lookup: Promise<RemoteLookup> }>();
+
+function findRemoteStack(directory: string, branch: string): Promise<RemoteLookup> {
+  const key = `${directory}\0${branch}`;
+  const cached = remoteCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.lookup;
+  const lookup = lookupRemoteStack(directory).catch((error: unknown) => {
+    console.error(`Remote stack lookup failed in ${directory}:`, error);
+    return null;
+  });
+  remoteCache.set(key, { expiresAt: Date.now() + REMOTE_TTL_MS, lookup });
+  return lookup;
+}
+
+async function lookupRemoteStack(directory: string): Promise<RemoteLookup> {
+  const pr = await run("gh", ["pr", "view", "--json", "number,url,headRefName"], directory);
+  // No pull request for this branch.
+  if (pr.code !== 0) return null;
+  const pullRequest = currentPullRequestSchema.parse(JSON.parse(pr.stdout));
+
+  const stacks = await run(
+    "gh",
+    ["api", `repos/{owner}/{repo}/stacks?pull_request=${pullRequest.number}`],
+    directory,
+  );
+  // 404 means stacked PRs are not enabled for the repository.
+  if (stacks.code !== 0) {
+    if (/HTTP 404/.test(stacks.stderr)) return null;
+    throw new Error(failureMessage(stacks));
+  }
+  const [stack] = remoteStackListSchema.parse(JSON.parse(stacks.stdout));
+  // `gh stack checkout` refuses fully merged stacks, so there is nothing to offer.
+  return stack?.open ? remoteStackState(stack, pullRequest) : null;
+}
+
 async function readStack(directory: string): Promise<StackState> {
   let result: CommandResult;
   try {
@@ -67,12 +108,14 @@ async function readStack(directory: string): Promise<StackState> {
       return { status: "unavailable", reason: "gh-stack-missing" };
     }
     if (/not part of a stack/.test(result.stderr)) {
-      return { status: "none", currentBranch: await currentBranch(directory) };
+      const branch = await currentBranch(directory);
+      const remote = branch ? await findRemoteStack(directory, branch) : null;
+      return remote ?? { status: "none", currentBranch: branch };
     }
     throw new Error(failureMessage(result));
   }
   const view = ghStackViewSchema.parse(JSON.parse(result.stdout));
-  return { status: "stack", ...view };
+  return { status: "stack", source: "local", ...view };
 }
 
 export function viewStack({ directory }: RpcInput<typeof viewStackRpc>): Promise<StackState> {
@@ -87,9 +130,31 @@ export async function checkoutStackBranch({
   if (stack.status !== "stack") throw new Error("This workspace is no longer on a stacked branch.");
   const known = [stack.trunk, ...stack.branches.map((entry) => entry.name)];
   if (!known.includes(branch)) throw new Error(`${branch} is not part of this stack.`);
+  if (stack.source === "remote") throw new Error("Check out this stack with gh stack first.");
   if (branch === stack.currentBranch) return stack;
 
   const result = await run("git", ["switch", branch], directory);
   if (result.code !== 0) throw new Error(failureMessage(result));
   return readStack(directory);
+}
+
+export async function trackRemoteStack({
+  directory,
+}: RpcInput<typeof trackRemoteStackRpc>): Promise<StackState> {
+  const stack = await readStack(directory);
+  if (stack.status !== "stack" || stack.source !== "remote" || !stack.stackNumber) {
+    throw new Error("No untracked GitHub stack found for this branch.");
+  }
+  const result = await run("gh", ["stack", "checkout", String(stack.stackNumber)], directory);
+  for (const key of remoteCache.keys()) {
+    if (key.startsWith(`${directory}\0`)) remoteCache.delete(key);
+  }
+  if (result.code !== 0) throw new Error(failureMessage(result));
+
+  const tracked = await readStack(directory);
+  // gh stack exits 0 when it declines, e.g. for a stack whose PRs are all merged.
+  if (tracked.status !== "stack" || tracked.source !== "local") {
+    throw new Error(failureMessage({ ...result, code: 1 }));
+  }
+  return tracked;
 }
