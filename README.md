@@ -2,6 +2,8 @@
 
 A [Paseo](https://paseo.sh) plugin for [GitHub stacked PRs](https://github.com/github/gh-stack). It shows the `gh stack` the workspace's branch belongs to and switches the workspace between the branches in it.
 
+![The Stack panel next to an agent, listing three stacked branches with their PR numbers above the trunk](images/stack-panel.png)
+
 ## Features
 
 - **Stack panel**: a workspace tab (also available in the Explorer) listing the stack from top to trunk. Each branch shows its PR number, and whether it is merged, queued, or needs a rebase. Tap a branch to check it out in the workspace.
