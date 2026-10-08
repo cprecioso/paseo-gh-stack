@@ -1,0 +1,31 @@
+on:
+  workflow_dispatch:
+  workflow_call:
+  pull_request:
+    branches:
+      - main
+
+name: Continuous Integration
+
+concurrency:
+  group: "ci-${{ github.head_ref || github.run_id }}"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-repo
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - run: mv "$(npm pack --silent)" package.tgz
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package.tgz
+          path: package.tgz
+          if-no-files-found: error

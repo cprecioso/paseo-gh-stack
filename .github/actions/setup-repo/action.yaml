@@ -1,0 +1,11 @@
+name: Setup repository
+description: "Setup repository for CI/CD workflows"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v6
+      with:
+        node-version: lts/*
+        cache: npm
+        registry-url: https://registry.npmjs.org
