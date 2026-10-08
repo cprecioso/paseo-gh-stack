@@ -1,0 +1,6 @@
+{
+  "id": "paseo-gh-stack",
+  "requirements": {
+    "paseo": ">=0.10.3"
+  }
+}

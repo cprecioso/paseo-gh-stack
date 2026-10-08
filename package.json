@@ -1,0 +1,44 @@
+{
+  "name": "@cprecioso/paseo-gh-stack",
+  "version": "0.1.0",
+  "files": [
+    "paseo-plugin.json",
+    "index.client.ts",
+    "index.client.tsx",
+    "index.server.ts",
+    "index.server.tsx",
+    "client/",
+    "server/",
+    "shared/"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@getpaseo/plugin": "0.10.2",
+    "@tanstack/react-query": "^5.90.11",
+    "@types/node": "^22.20.4",
+    "@types/react": "~19.2.0",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "typescript": "^5.9.3",
+    "zod": "^4.4.3"
+  },
+  "description": "Paseo workspace panel for GitHub stacked PRs: see the gh stack your branch belongs to and switch the workspace between its branches.",
+  "author": "Carlos Precioso",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cprecioso/paseo-gh-stack.git"
+  },
+  "homepage": "https://github.com/cprecioso/paseo-gh-stack",
+  "keywords": [
+    "paseo",
+    "paseo-plugin",
+    "gh-stack",
+    "stacked-prs"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}
