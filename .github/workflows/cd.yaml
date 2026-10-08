@@ -19,6 +19,11 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+
     steps:
       - uses: googleapis/release-please-action@v5
         id: release
